@@ -1942,6 +1942,46 @@ class VspherePluginsCommonTests(unittest.TestCase):
             spec=configSpec.return_value,
         )
 
+    @patch('pyVmomi.vim.vm.ConfigSpec')
+    @patch('vsphere_plugin_common.VsphereClient._get_tasks')
+    def test_wait_for_task(self, get_tasks, configSpec):
+        client = vsphere_plugin_common.ServerClient()
+        # failed task
+        task = Mock()
+        task.info.state = vsphere_plugin_common.vim.TaskInfo.State.error
+        with self.assertRaises(NonRecoverableError) as e:
+            client._wait_for_task(task=task)
+
+        # no tasks for check
+        instance = Mock()
+        instance.runtime_properties = {}
+        client._wait_for_task(task=None, instance=instance)
+
+        # outdated task id
+        get_tasks.return_value = []
+        instance = Mock()
+        instance.runtime_properties = {
+            '_task_id': 42
+        }
+        client._wait_for_task(task=None, instance=instance)
+        self.assertFalse(instance.runtime_properties)
+
+        # failed deffered task
+        task = Mock()
+        task.info.state = vsphere_plugin_common.vim.TaskInfo.State.error
+        task._moId = 42
+        task_obj = Mock()
+        task_obj.obj = task
+        task_obj.id = 42
+        get_tasks.return_value = [task_obj]
+        instance = Mock()
+        instance.runtime_properties = {
+            '_task_id': 42,
+            '_resource_id': None
+        }
+        with self.assertRaises(NonRecoverableError) as e:
+            client._wait_for_task(task=None, instance=instance)
+
     def test_add_new_custom_attr(self):
         client = vsphere_plugin_common.ServerClient()
         client.si = MagicMock()
@@ -2769,3 +2809,7 @@ class PluginCommonUnitTests(unittest.TestCase):
         self.assertEqual(
             get_ip_from_nic_mock.return_value,
             res)
+
+
+if __name__ == '__main__':
+    unittest.main()
