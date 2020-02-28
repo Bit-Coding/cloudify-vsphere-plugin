@@ -23,7 +23,6 @@ import time
 import unittest
 
 from mock import Mock, MagicMock, patch, call
-from pyfakefs import fake_filesystem_unittest
 
 from cloudify.exceptions import NonRecoverableError
 from cloudify.state import current_ctx
@@ -1949,7 +1948,7 @@ class VspherePluginsCommonTests(unittest.TestCase):
         # failed task
         task = Mock()
         task.info.state = vsphere_plugin_common.vim.TaskInfo.State.error
-        with self.assertRaises(NonRecoverableError) as e:
+        with self.assertRaises(NonRecoverableError):
             client._wait_for_task(task=task)
 
         # no tasks for check
@@ -1979,7 +1978,7 @@ class VspherePluginsCommonTests(unittest.TestCase):
             '_task_id': 42,
             '_resource_id': None
         }
-        with self.assertRaises(NonRecoverableError) as e:
+        with self.assertRaises(NonRecoverableError):
             client._wait_for_task(task=None, instance=instance)
 
     def test_add_new_custom_attr(self):
@@ -2701,114 +2700,6 @@ class VspherePluginsCommonTests(unittest.TestCase):
 
         self.assertNotIn('name', warnings[3])
         self.assertNotIn('id', warnings[3])
-
-
-class VspherePluginCommonFSTests(fake_filesystem_unittest.TestCase):
-    def setUp(self):
-        super(VspherePluginCommonFSTests, self).setUp()
-        self.setUpPyfakefs()
-        self.mock_ctx = MagicMock()
-        current_ctx.set(self.mock_ctx)
-
-    @patch('cloudify_vsphere.utils.feedback.ctx')
-    def _simple_deprecated_test(self, path, mock_ctx):
-        evaled_path = os.getenv(path, path)
-        expanded_path = os.path.expanduser(evaled_path)
-        self.fs.CreateFile(expanded_path)
-
-        config = vsphere_plugin_common.Config()
-        ret = config._find_config_file()
-
-        self.assertEqual(expanded_path, ret)
-
-        mock_ctx.logger.warn.assert_called_with(
-            'Deprecated configuration options were found: {}'.format(path)
-        )
-
-    def test_choose_root(self):
-        self._simple_deprecated_test('/root/connection_config.yaml')
-
-    def test_choose_home(self):
-        self._simple_deprecated_test('~/connection_config.yaml')
-
-    def test_choose_old_envvar(self):
-        with patch.dict('os.environ', {'CONNECTION_CONFIG_PATH': '/a/path'}):
-            self._simple_deprecated_test('CONNECTION_CONFIG_PATH')
-
-    def test_choose_config_file(self):
-        self.fs.CreateFile(
-            '/etc/cloudify/vsphere_plugin/connection_config.yaml')
-        self.addCleanup(
-            self.fs.RemoveFile,
-            '/etc/cloudify/vsphere_plugin/connection_config.yaml')
-
-        config = vsphere_plugin_common.Config()
-        ret = config._find_config_file()
-
-        self.assertEqual(
-            ret,
-            '/etc/cloudify/vsphere_plugin/connection_config.yaml')
-
-    def test_no_file(self):
-        config = vsphere_plugin_common.Config()
-
-        ret = config.get()
-
-        self.mock_ctx.logger.warn.assert_called_once_with(
-            'Unable to read configuration file '
-            '/etc/cloudify/vsphere_plugin/connection_config.yaml.'
-        )
-        self.assertEqual(ret, {})
-
-    def test_new_envvar(self):
-        self.fs.CreateFile(
-            '/a/pth',
-            contents="{'some': 'contents'}\n"
-        )
-        with patch.dict('os.environ', {'CFY_VSPHERE_CONFIG_PATH': '/a/pth'}):
-            config = vsphere_plugin_common.Config()
-
-            ret = config.get()
-
-        self.assertEqual({'some': 'contents'}, ret)
-
-
-class PluginCommonUnitTests(unittest.TestCase):
-
-    @patch('vsphere_plugin_common.get_ip_from_vsphere_nic_ips')
-    def test_get_server_ip(self, get_ip_from_nic_mock):
-        client = vsphere_plugin_common.ServerClient()
-        server = Mock()
-        server.guest.net = [
-            MagicMock(name='oobly'),
-            MagicMock(name='hoobly'),
-        ]
-        server.guest.net[0].network = 'oobly'
-        server.guest.net[0].ipAddress = '10.11.12.13'
-        server.guest.net[1].network = 'hoobly'
-        server.guest.net[1].ipAddress = '10.11.12.14'
-
-        res = client.get_server_ip(server, 'hoobly')
-
-        self.assertEqual(
-            get_ip_from_nic_mock.return_value,
-            res)
-
-    @patch('vsphere_plugin_common.get_ip_from_vsphere_nic_ips')
-    def test_get_server_ip_with_slash(self, get_ip_from_nic_mock):
-        client = vsphere_plugin_common.ServerClient()
-        server = Mock()
-        server.guest.net = [
-            MagicMock(name='oobly/hoobly'),
-        ]
-        server.guest.net[0].network = 'oobly%2fhoobly'
-        server.guest.net[0].ipAddress = '10.11.12.13'
-
-        res = client.get_server_ip(server, 'oobly/hoobly')
-
-        self.assertEqual(
-            get_ip_from_nic_mock.return_value,
-            res)
 
 
 if __name__ == '__main__':
