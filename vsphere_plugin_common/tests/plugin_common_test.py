@@ -24,7 +24,7 @@ import unittest
 
 from mock import Mock, MagicMock, patch, call
 
-from cloudify.exceptions import NonRecoverableError
+from cloudify.exceptions import NonRecoverableError, OperationRetry
 from cloudify.state import current_ctx
 
 import vsphere_plugin_common
@@ -1980,6 +1980,41 @@ class VspherePluginsCommonTests(unittest.TestCase):
         }
         with self.assertRaises(NonRecoverableError):
             client._wait_for_task(task=None, instance=instance)
+
+        # succesful task
+        task = Mock()
+        task.info.state = vsphere_plugin_common.vim.TaskInfo.State.success
+        task.info.result._moId = 404
+        task._moId = 42
+        task_obj = Mock()
+        task_obj.obj = task
+        task_obj.id = 42
+        get_tasks.return_value = [task_obj]
+        instance = Mock()
+        instance.runtime_properties = {
+            '_task_id': 42,
+            '_resource_id': 'check_id'
+        }
+        client._wait_for_task(task=None, instance=instance)
+        self.assertEqual(instance.runtime_properties, {'check_id': 404})
+
+        # several retries
+        task = Mock()
+        task.info.state = vsphere_plugin_common.vim.TaskInfo.State.queued
+        task.info.result._moId = 404
+        task._moId = 42
+        task_obj = Mock()
+        task_obj.obj = task
+        task_obj.id = 42
+        get_tasks.return_value = [task_obj]
+        instance = Mock()
+        instance.runtime_properties = {
+            '_task_id': 42,
+            '_resource_id': 'check_id'
+        }
+        with self.assertRaises(OperationRetry):
+            with patch("vsphere_plugin_common.time", Mock()):
+                client._wait_for_task(task=None, instance=instance)
 
     def test_add_new_custom_attr(self):
         client = vsphere_plugin_common.ServerClient()
