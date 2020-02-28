@@ -62,7 +62,7 @@ def create(storage_client, storage, use_external_resource=False):
 
     connected_vms = [rt_properties for rt_properties in capabilities
                      if VSPHERE_SERVER_ID in rt_properties]
-    if len(connected_vms) > 1:
+    if len(connected_vms) != 1:
         raise NonRecoverableError(
             'Error during trying to create storage: storage may be '
             'connected to at most one VM')
