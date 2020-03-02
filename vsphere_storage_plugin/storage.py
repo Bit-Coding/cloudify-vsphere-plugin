@@ -182,8 +182,13 @@ def delete(storage_client, **kwargs):
 @op
 @with_storage_client
 def resize(storage_client, **kwargs):
-    vm_id = ctx.instance.runtime_properties[VSPHERE_STORAGE_VM_ID]
-    vm_name = ctx.instance.runtime_properties[VSPHERE_STORAGE_VM_NAME]
+    vm_id = ctx.instance.runtime_properties.get(VSPHERE_STORAGE_VM_ID)
+    vm_name = ctx.instance.runtime_properties.get(VSPHERE_STORAGE_VM_NAME)
+    if not vm_name or not vm_id:
+        ctx.logger.info(
+            'Storage resize not needed due to not being fully initialized.')
+        return
+
     storage_file_name = \
         ctx.instance.runtime_properties[VSPHERE_STORAGE_FILE_NAME]
     storage_size = ctx.instance.runtime_properties.get('storage_size')

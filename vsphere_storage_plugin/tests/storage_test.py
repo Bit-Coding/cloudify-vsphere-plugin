@@ -206,6 +206,7 @@ class VsphereStorageTest(unittest.TestCase):
         self.mock_ctx._operation.name = DELETE_NODE_ACTION
         # skiped delete with empty
         storage.delete()
+        mock_client_get().delete_storage.assert_not_called()
 
         # skiped external
         runtime_properties = self.mock_ctx.instance.runtime_properties
@@ -217,8 +218,10 @@ class VsphereStorageTest(unittest.TestCase):
         runtime_properties['use_external_resource'] = True
         storage.delete()
         self.assertFalse(self.mock_ctx.instance.runtime_properties)
+        mock_client_get().delete_storage.assert_not_called()
 
         # remove real storage
+        mock_client_get().resize_storage = Mock()
         runtime_properties = self.mock_ctx.instance.runtime_properties
         runtime_properties['scsi_id'] = 'something'
         runtime_properties['datastore_file_name'] = 'file name'
@@ -226,6 +229,58 @@ class VsphereStorageTest(unittest.TestCase):
         runtime_properties['attached_vm_name'] = 'Julie'
         storage.delete()
         self.assertFalse(self.mock_ctx.instance.runtime_properties)
+        mock_client_get().delete_storage.assert_called_with(
+            'i', 'file name', instance=self.mock_ctx.instance)
+
+    @patch('vsphere_plugin_common.VsphereClient.get')
+    def test_storage_resize(self, mock_client_get):
+        # skiped delete with empty
+        storage.resize()
+        mock_client_get().resize_storage.assert_not_called()
+
+        # resize external
+        runtime_properties = self.mock_ctx.instance.runtime_properties
+        runtime_properties['datastore_file_name'] = 'file name'
+        runtime_properties['storage_size'] = 7
+        runtime_properties['scsi_id'] = 'something'
+        runtime_properties['attached_vm_id'] = 'i'
+        runtime_properties['attached_vm_name'] = 'Julie'
+        runtime_properties['use_external_resource'] = True
+        storage.resize()
+        self.assertEqual(self.mock_ctx.instance.runtime_properties, {
+            'datastore_file_name': 'file name',
+            'storage_size': 7,
+            'scsi_id': 'something',
+            'attached_vm_id': 'i',
+            'attached_vm_name': 'Julie',
+            'use_external_resource': True})
+        mock_client_get().resize_storage.assert_called_with(
+            'i', 'file name', 7, instance=self.mock_ctx.instance)
+
+        # resize real storage
+        runtime_properties = self.mock_ctx.instance.runtime_properties
+        runtime_properties['scsi_id'] = 'something'
+        runtime_properties['datastore_file_name'] = 'file name'
+        runtime_properties['attached_vm_id'] = 'i'
+        runtime_properties['attached_vm_name'] = 'Julie'
+        storage.resize()
+        self.assertEqual(self.mock_ctx.instance.runtime_properties, {
+            'datastore_file_name': 'file name',
+            'storage_size': 7,
+            'scsi_id': 'something',
+            'attached_vm_id': 'i',
+            'attached_vm_name': 'Julie',
+            'use_external_resource': True})
+
+        # resize to zero
+        runtime_properties = self.mock_ctx.instance.runtime_properties
+        runtime_properties['scsi_id'] = 'something'
+        runtime_properties['datastore_file_name'] = 'file name'
+        runtime_properties['attached_vm_id'] = 'i'
+        runtime_properties['attached_vm_name'] = 'Julie'
+        runtime_properties['storage_size'] = 0
+        with self.assertRaises(NonRecoverableError):
+            storage.resize()
 
 
 if __name__ == '__main__':
