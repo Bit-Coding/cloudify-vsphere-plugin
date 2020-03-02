@@ -101,6 +101,7 @@ class VsphereControllerTest(unittest.TestCase):
         task = Mock()
         task.info.state = vim.TaskInfo.State.success
         vm.obj.ReconfigVM_Task = MagicMock(return_value=task)
+        vm.guest.net = []
         contr_device = vim.vm.device.VirtualController()
         contr_device.key = 4001
         contr_device.busNumber = 2
@@ -468,6 +469,37 @@ class VsphereControllerTest(unittest.TestCase):
                         self.assertEqual(
                             str(e.exception),
                             "Have not found key for new added device")
+
+                args, kwargs = vm.obj.ReconfigVM_Task.call_args
+                self.assertEqual(args, ())
+                self.assertEqual(kwargs.keys(), ['spec'])
+
+                # successful attach
+                runtime_properties = _ctx.target.instance.runtime_properties
+                runtime_properties['connected_networks'] = False
+                runtime_properties['connected'] = False
+                runtime_properties['known_keys'] = [4003]
+                vm = self._get_vm(kwargs['spec'].deviceChange[0].device)
+                with patch(
+                    "vsphere_plugin_common.VsphereClient._get_obj_by_id",
+                    MagicMock(return_value=vm)
+                ):
+                    with patch(
+                        "vsphere_plugin_common.VsphereClient._get_obj_by_name",
+                        MagicMock(return_value=network)
+                    ):
+                        devices.attach_server_to_ethernet_card(ctx=_ctx)
+
+                # rerun ignore
+                with patch(
+                    "vsphere_plugin_common.VsphereClient._get_obj_by_id",
+                    MagicMock(return_value=vm)
+                ):
+                    with patch(
+                        "vsphere_plugin_common.VsphereClient._get_obj_by_name",
+                        MagicMock(return_value=network)
+                    ):
+                        devices.attach_server_to_ethernet_card(ctx=_ctx)
 
     def test_attach_server_ethernet_card(self):
         for settings in [{
