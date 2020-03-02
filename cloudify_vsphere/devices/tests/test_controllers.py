@@ -154,6 +154,17 @@ class VsphereControllerTest(unittest.TestCase):
                     _ctx.source.instance.runtime_properties, {}
                 )
 
+                # rerun
+                vm = self._get_vm()
+                with patch(
+                    "vsphere_plugin_common.VsphereClient._get_obj_by_id",
+                    MagicMock(return_value=vm)
+                ):
+                    devices.detach_controller(ctx=_ctx)
+                self.assertEqual(
+                    _ctx.source.instance.runtime_properties, {}
+                )
+
     def check_attach_ethernet_card(self, settings):
         _ctx = self._gen_relation_ctx()
         conn_mock = Mock()
@@ -229,15 +240,51 @@ class VsphereControllerTest(unittest.TestCase):
                 self.assertEqual(kwargs.keys(), ['spec'])
                 new_adapter = str(
                     type(kwargs['spec'].deviceChange[0].device))
+                runtime_properties = _ctx.target.instance.runtime_properties
+
                 if settings.get('adapter_type'):
                     self.assertTrue(
                         settings['adapter_type'].lower() in new_adapter.lower()
                     )
+                    if "virtualvmxnet3" in new_adapter.lower():
+                        self.assertEqual(
+                            runtime_properties.get('known_keys'),
+                            [4002]
+                        )
+                    else:
+                        self.assertFalse(runtime_properties.get('known_keys'))
                 else:
                     self.assertEqual(
                         new_adapter,
                         "<class 'pyVmomi.VmomiSupport.vim.vm.device."
                         "VirtualVmxnet3'>")
+
+                # successful attach
+                runtime_properties = _ctx.target.instance.runtime_properties
+                runtime_properties['connected_networks'] = False
+                runtime_properties['connected'] = False
+                runtime_properties['known_keys'] = [4001, 4002, 4003]
+                vm = self._get_vm(kwargs['spec'].deviceChange[0].device)
+                with patch(
+                    "vsphere_plugin_common.VsphereClient._get_obj_by_id",
+                    MagicMock(return_value=vm)
+                ):
+                    with patch(
+                        "vsphere_plugin_common.VsphereClient._get_obj_by_name",
+                        MagicMock(return_value=network)
+                    ):
+                        devices.attach_ethernet_card(ctx=_ctx)
+
+                # rerun ignore
+                with patch(
+                    "vsphere_plugin_common.VsphereClient._get_obj_by_id",
+                    MagicMock(return_value=vm)
+                ):
+                    with patch(
+                        "vsphere_plugin_common.VsphereClient._get_obj_by_name",
+                        MagicMock(return_value=network)
+                    ):
+                        devices.attach_ethernet_card(ctx=_ctx)
 
     def test_attach_ethernet_card(self):
         for settings in [{
