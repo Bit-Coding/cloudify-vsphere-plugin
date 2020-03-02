@@ -96,7 +96,7 @@ class VsphereControllerTest(unittest.TestCase):
         devices.delete_controller(ctx=_ctx)
         self.assertEqual(_ctx.instance.runtime_properties, {})
 
-    def _get_vm(self):
+    def _get_vm(self, new_adapter=None):
         vm = Mock()
         task = Mock()
         task.info.state = vim.TaskInfo.State.success
@@ -108,7 +108,11 @@ class VsphereControllerTest(unittest.TestCase):
         net_device.key = 4002
         scsi_device = vim.vm.device.ParaVirtualSCSIController()
         scsi_device.key = 4003
-        vm.config.hardware.device = [contr_device, net_device, scsi_device]
+        devices = [contr_device, net_device, scsi_device]
+        if new_adapter:
+            new_adapter.key = 4004
+            devices.append(new_adapter)
+        vm.config.hardware.device = devices
         return vm
 
     def test_detach_controller(self):
@@ -285,24 +289,49 @@ class VsphereControllerTest(unittest.TestCase):
                 self.assertEqual(args, ())
                 self.assertEqual(kwargs.keys(), ['spec'])
                 new_adapter = str(type(kwargs['spec'].deviceChange[0].device))
+                runtime_properties = _ctx.source.instance.runtime_properties
                 if settings.get('adapterType') == "lsilogic":
                     self.assertEqual(
                         new_adapter,
                         "<class 'pyVmomi.VmomiSupport.vim.vm.device."
                         "VirtualLsiLogicController'>"
                     )
+                    self.assertFalse(runtime_properties.get('known_keys'))
                 elif settings.get('adapterType') == "lsilogic_sas":
                     self.assertEqual(
                         new_adapter,
                         "<class 'pyVmomi.VmomiSupport.vim.vm.device."
                         "VirtualLsiLogicSASController'>"
                     )
+                    self.assertFalse(runtime_properties.get('known_keys'))
                 else:
                     self.assertEqual(
                         new_adapter,
                         "<class 'pyVmomi.VmomiSupport.vim.vm.device."
                         "ParaVirtualSCSIController'>"
                     )
+                    self.assertEqual(
+                        runtime_properties.get('known_keys'), [4003]
+                    )
+
+                # successful attach
+                runtime_properties = _ctx.source.instance.runtime_properties
+                runtime_properties['connected_networks'] = False
+                runtime_properties['connected'] = False
+                runtime_properties['known_keys'] = [4003]
+                vm = self._get_vm(kwargs['spec'].deviceChange[0].device)
+                with patch(
+                    "vsphere_plugin_common.VsphereClient._get_obj_by_id",
+                    MagicMock(return_value=vm)
+                ):
+                    devices.attach_scsi_controller(ctx=_ctx)
+
+                # rerun ignore
+                with patch(
+                    "vsphere_plugin_common.VsphereClient._get_obj_by_id",
+                    MagicMock(return_value=vm)
+                ):
+                    devices.attach_scsi_controller(ctx=_ctx)
 
     def test_attach_scsi_controller(self):
         for settings in [{
