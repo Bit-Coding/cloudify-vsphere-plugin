@@ -166,6 +166,27 @@ class VsphereControllerTest(unittest.TestCase):
                     _ctx.source.instance.runtime_properties, {}
                 )
 
+    def test_detach_server_from_controller(self):
+        _ctx = self._gen_relation_ctx()
+        conn_mock = Mock()
+        smart_connect = MagicMock(return_value=conn_mock)
+        with patch("vsphere_plugin_common.SmartConnectNoSSL", smart_connect):
+            with patch("vsphere_plugin_common.Disconnect", Mock()):
+                # reinstall with empty properties
+                devices.detach_server_from_controller(ctx=_ctx)
+
+                # real delte conteroller
+                _ctx.source.instance.runtime_properties[
+                    'vsphere_server_id'
+                ] = "vm-101"
+                _ctx.target.instance.runtime_properties['busKey'] = 4010
+                vm = self._get_vm()
+                with patch(
+                    "vsphere_plugin_common.VsphereClient._get_obj_by_id",
+                    MagicMock(return_value=vm)
+                ):
+                    devices.detach_server_from_controller(ctx=_ctx)
+
     def check_attach_ethernet_card(self, settings):
         _ctx = self._gen_relation_ctx()
         conn_mock = Mock()
